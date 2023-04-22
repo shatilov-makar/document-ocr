@@ -5,11 +5,8 @@ from natasha import (
     MorphVocab,
     NewsEmbedding,
     NewsMorphTagger,
-    NewsSyntaxParser,
     NewsNERTagger,
-    PER,
     DatesExtractor,
-    NamesExtractor,
     Doc
 )
 
