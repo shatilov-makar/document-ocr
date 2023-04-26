@@ -1,21 +1,27 @@
 from requests import post
 import json
 import base64
+import streamlit as st
+
+
+connection_data = {
+    'iam_url':  st.secrets['IAM_URL'],
+    'vision_url':  st.secrets['VISION_URL'],
+    'folder_id':  st.secrets['FOLDER_ID'],
+    'oauth_token': st.secrets['OAUTH_TOKEN']
+}
 
 
 class Ocr:
     '''
         Класс для запроса на yandex.cloud с целью распознавания текста на изображении 
-
-        Параметры:
-            API : словарь с данными, необходимыми для подключения к сервису 
     '''
 
-    def __init__(self, API):
-        self.vision_url = API['vision_url']
-        self.folder_id = API['folder_id']
-        self.oauth_token = API['oauth_token']
-        self.iam_token = self.__get_iam_token(API['iam_url'])
+    def __init__(self):
+        self.vision_url = connection_data['vision_url']
+        self.folder_id = connection_data['folder_id']
+        self.oauth_token = connection_data['oauth_token']
+        self.iam_token = self.__get_iam_token(connection_data['iam_url'])
 
     def __get_iam_token(self, iam_url):
         '''

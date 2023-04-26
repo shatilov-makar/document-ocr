@@ -42,7 +42,7 @@ class Ner:
         if (len(self.dates) > 0):
             date = self.dates[0].fact
             return datetime(date.year, date.month, date.day).strftime("%d.%m.%y")
-        return None
+        return '-'
 
     def __get_spans(self):
         '''
@@ -70,7 +70,7 @@ class Ner:
         spans = list(filter(lambda r: r.type == 'ORG', self.spans))
         if (len(spans) > 0 and spans[0].start < len(self.span_text)/2):
             return spans[0].normal
-        return None
+        return '-'
 
     def get_bailiff_name(self):
         '''
@@ -79,20 +79,20 @@ class Ner:
         spans = list(filter(lambda r: r.type == 'PER', self.spans))
         if (len(spans) > 0 and spans[0].start < len(self.span_text)/2):
             return spans[0].normal
-        return None
+        return '-'
 
     def get_claimant_name(self):
         '''
             Функция возвращает имя/название компании должника
         '''
         if (len(self.spans) < 3):
-            return None
+            return '-'
         spans = self.spans[-2:]
         if (spans[0].start > len(self.span_text)/2 and spans[1].start > len(self.span_text)/2):
             return spans[0].normal
         elif (spans[0].start < len(self.span_text)/2 and spans[1].start > len(self.span_text)/2):
             return spans[1].normal
-        return None
+        return '-'
 
 
     def get_debtor(self):
@@ -100,8 +100,8 @@ class Ner:
             Функция возвращает имя/название компании взыскателя
         '''
         if (len(self.spans) < 3):
-            return None
+            return '-'
         spans = self.spans[-2:]
         if (spans[0].start > len(self.span_text)/2 and spans[1].start > len(self.span_text)/2):
             return spans[1].normal
-        return None
+        return '-'

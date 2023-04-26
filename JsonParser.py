@@ -1,6 +1,9 @@
 import json
 import numpy as np
 import re
+import operator
+import scipy.cluster.hierarchy as hcluster
+import pandas as pd
 
 
 class JsonParser:
@@ -8,101 +11,141 @@ class JsonParser:
         Класс для обработки результата ocr от сервиса yandex.cloud.
 
         Параметры:
-            ocr_result : вернувшийся от yandex.cloud результат распознавания текста на изображении в формате JSON
+            ocr_result : вернувшийся от yandex.cloud результат распознавания текста документа в формате JSON
+
+        Аттрибуты:
+            doc_text: текст документа
     '''
 
     def __init__(self, ocr_result):
-        self.height = int(ocr_result['pages'][0]['height'])
-        self.width = int(ocr_result['pages'][0]['width'])
-        self.lines, self.text = self.__extract_data(ocr_result['pages'][0])
+        self.__lines = self.__extract_lines(ocr_result['pages'][0])
+        self.doc_text = ' '.join([line['text'] for line in self.__lines])
 
-    def __extract_data(self, json):
+    def __extract_lines(self, json):
         '''
+            Функция возвращает строки документа в формате
+                text: текст строки
+                x1: левая верхняя координата по X
+                x2: правая нижняя координата по X
+                y1: левая верхняя координата по Y
+                y2: правая нижняя координата по Y
 
+            Параметры:
+                json : результат распознавания текста на определенной странице документа в формате JSON 
         '''
         lines = []
-        text = []
         for block in json['blocks']:
             for line in block['lines']:
-                text_in_block = []
-                for word in line['words']:
-                    if word['confidence'] > 0.8:
-                        text_in_block.append(word['text'])
-                        text.append(word['text'])
-                text_str = ' '.join(text_in_block).strip()
+                text_str = ' '.join(
+                    [word['text'] for word in line['words'] if word['confidence'] > 0.5])
                 line = line['boundingBox']['vertices']
                 if ('x' in line[0] and 'y' in line[0] and 'x' in line[2] and 'y' in line[2]):
                     lines.append({'text': text_str,
                                   'x1': int(line[0]['x']), 'y1': int(line[0]['y']),
                                   'x2': int(line[2]['x']), 'y2': int(line[2]['y'])})
 
-        return sorted(lines, key=lambda line: line['y1']),   ' '.join(text).strip()
+        return sorted(lines, key=lambda line: line['y1'])
 
-    def __get_prices_and_property(self):
+    def __get_table_lines(self):
+        '''
+            Функция возвращает строки таблицы
+        '''
         stop_words = ['вышеуказанное', 'передано', 'судебным', 'приставом',
-                      'приставом- исполнителем', 'приставом-исполнителем', 'ареста']
-
-        property_list_coords = {}
-        prices = []
-        property_list = []
-
-        for row in self.lines:
-            text = row['text']
-
-            if list(filter(lambda stop_word: stop_word in text, stop_words)):
+                      'исполнителем', 'ареста']
+        start_words = ['описание', 'наименование', 'количество',
+                       'измерения', '(руб', 'п/', 'n/', 'характеристики']
+        table_begin = False
+        table_lines = []
+        for row in self.__lines:
+            text = row['text'].strip()
+            if text == '':
+                continue
+            if list(filter(lambda stop_word: stop_word in text.lower(), stop_words)):
                 break
-            if not property_list_coords and 'количество' in text.lower():
-                property_list_coords = {
-                    'x1': int(row['x1']), 'y2': int(row['y2'])}
+            if list(filter(lambda start_word: start_word in text.lower(), start_words)):
+                table_begin = True
+            elif table_begin and not list(filter(lambda start_word: start_word in text.lower(), start_words)):
+                table_lines.append(row)
+        return table_lines
 
-            elif re.findall(r'[\d ]+[\,\. ]\d{1,3}\s?р?p?у?б?\.?', text) and row['x1'] > (self.width/2):
-                prices.append(row)
+    def __get_items_and_attributes(self, table_rows):
+        '''
+            Возвращает список строк имущества и список кол-ва и цены имущества 
 
-            elif property_list_coords and row['x1'] < (self.width/2) and row['y1'] > property_list_coords['y2']\
-                    and not 'описание' in text.lower() and not 'наименование' in text.lower() and len(text) > 3:
-                property_list.append(row)
+            Параметры:
+                table_rows : строки таблицы
+        '''
+        df = pd.DataFrame(table_rows)
+        df['cluster'] = hcluster.fclusterdata(
+            df[['x1']], t=35, criterion="distance")
+        # удаляем случайные кластеры
+        df = df[df.groupby(['cluster']).transform('size') > 1]
+        # кластер стоимости должен быть самым "правым" и содержать цифры
+        prices = df[(df.groupby(['cluster'])['x1'].transform('mean') == max(
+            df.groupby(['cluster'])['x1'].mean())) & (df['text'].str.contains('\d'))]
+        prices_cluster = prices['cluster'].mean()
+        # кластер наименований должен быть самым "длинным"
+        items_cluster = max(df.groupby(['cluster'])['text'].apply(','.join).agg(
+            lambda x: len(x)).items(), key=operator.itemgetter(1))[0]
+        items = df[(df['cluster'] == items_cluster) &
+                   (df['text'].transform(len) > 3)]
+        # удаляем кластеры с ценами и наименованиями
+        df = df[(df['cluster'] != prices_cluster) &
+                (df['cluster'] != items_cluster)]
+        # находим вероятные клаcтеры с количеством имущества
+        quantity_candidates = df[(df.groupby('cluster')['x1'].transform('mean') > items['x2'].mean()) & (
+            df.groupby('cluster')['x1'].transform('mean') < prices['x1'].mean())]
+        # кластер с количеством имущества должен быть самым "коротким" среди кандидатов
+        quantity_cluster = min(quantity_candidates.groupby(['cluster'])['text'].apply(
+            ','.join).agg(lambda x: len(x)).items(), key=operator.itemgetter(1))[0]
 
-        prices = self.__correct_prices(prices)
-        return prices, property_list
+        quantities = df[(df['cluster'] == quantity_cluster)
+                        & (df['text'].str.contains('\d'))].to_dict('records')
+        attributes = []
+        # связываем цену и количество
+        if (len(prices) == len(quantities)):
+            attributes = [{'price': price['text'], 'quantity': quantities[i]['text'],
+                           'x1': quantities[i]['x1'], 'x2': quantities[i]['x2'],
+                           'y1': quantities[i]['y1'], 'y2': quantities[i]['y2']} for i, price in enumerate(prices.to_dict('records'))]
+        else:
+            attributes = [{'price': price['text'], 'quantity': '-',
+                           'x1': price['x1'], 'x2': price['x2'],
+                           'y1': price['y1'], 'y2': price['y2']} for price in prices.to_dict('records')]
+        return items.to_dict('records'), attributes
 
-    def __correct_prices(self, inp_prices):
-        prices = []
-        it = iter(inp_prices)
-        if (len(inp_prices) > 1):
-            for x, y in zip(it, it):
-                if abs(x['x1'] - y['x1']) > 20 and abs(x['y1'] - y['y1']) < 20:
-                    if x['x1'] < y['x1']:
-                        prices.append(y)
-                    else:
-                        prices.append(x)
-                else:
-                    prices.extend([x, y])
-        if len(inp_prices) % 2 == 1:
-            prices.append(inp_prices[-1])
-        return prices
-
-    def get_prices_and_property_pairs(self):
-        prices, property_list = self.__get_prices_and_property()
+    def get_property(self):
+        '''
+            Возвращает таблицу имущества в формате датафрейма
+        '''
+        items, attributes = self.__get_items_and_attributes(
+            self.__get_table_lines())
         price_i = 0
         pairs = []
-        if len(property_list) == 0 or len(prices) == 0:
-            return prices, property_list
-
-        for i, item in enumerate(property_list):
+        total = {}
+        if ("итого" in items[-1]['text'].lower()):
+            total = {"property": items[-1]['text'].upper(), "quantity": attributes[-1]
+                     ['quantity'], "price": attributes[-1]['price']}
+            attributes = attributes[:-1]
+            items = items[:-1]
+        for i, item in enumerate(items):
             if (i == 0):
-                pairs.append({"rows": [item], "price": prices[price_i]})
+                pairs.append({"property": item['text'].lstrip('0123456789.- '),  "quantity": attributes[price_i]
+                             ['quantity'], "price": attributes[price_i]['price']})
                 continue
 
-            if (len(prices) == price_i+1):
-                pairs[price_i]["rows"].append(item)
+            if (len(attributes) == price_i+1):
+                pairs[price_i]["property"] += ' ' + item['text']
                 break
 
             if (item['text'].lstrip('0123456789.- ').split(' ')[0].istitle() or "итого" in item['text'].lower())\
-                and ((item['y1'] >= prices[price_i+1]['y1'] and item['y1'] <= prices[price_i+1]['y2']) or
-                     (item['y2'] >= prices[price_i+1]['y1'] and item['y2'] <= prices[price_i+1]['y2']) or
-                     (item['y1'] - prices[price_i]['y2'] >= prices[price_i+1]['y1'] - item['y2'])):
+                and ((item['y1'] >= attributes[price_i+1]['y1'] and item['y1'] <= attributes[price_i+1]['y2']) or
+                     (item['y2'] >= attributes[price_i+1]['y1'] and item['y2'] <= attributes[price_i+1]['y2']) or
+                     (item['y1'] - attributes[price_i]['y2'] >= attributes[price_i+1]['y1'] - item['y2'])):
                 price_i += 1
-                pairs.append({"rows": [item], "price": prices[price_i]})
+                pairs.append({"property": item['text'].lstrip('0123456789.- '), "quantity": attributes[price_i]
+                             ['quantity'], "price": attributes[price_i]['price']})
             else:
-                pairs[price_i]["rows"].append(item)
-        return pairs
+                pairs[price_i]["property"] += ' ' + item['text']
+        if (total):
+            pairs.append(total)
+        return pd.DataFrame(pairs)
