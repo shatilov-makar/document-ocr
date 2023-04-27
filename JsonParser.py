@@ -117,9 +117,11 @@ class JsonParser:
         '''
             Возвращает таблицу имущества в формате датафрейма
         '''
-        items, attributes = self.__get_items_and_attributes(
-            self.__get_table_lines())
-        price_i = 0
+        lines = self.__get_table_lines()
+        if (len(lines) == 0):
+            return pd.DataFrame()
+        items, attributes = self.__get_items_and_attributes(lines)
+        attr_i = 0
         pairs = []
         total = {}
         if ("итого" in items[-1]['text'].lower()):
@@ -129,23 +131,26 @@ class JsonParser:
             items = items[:-1]
         for i, item in enumerate(items):
             if (i == 0):
-                pairs.append({"property": item['text'].lstrip('0123456789.- '),  "quantity": attributes[price_i]
-                             ['quantity'], "price": attributes[price_i]['price']})
+                pairs.append({"property": item['text'].lstrip('0123456789.- '),  "quantity": attributes[attr_i]
+                             ['quantity'], "price": attributes[attr_i]['price']})
                 continue
 
-            if (len(attributes) == price_i+1):
-                pairs[price_i]["property"] += ' ' + item['text']
+            if (len(attributes) == attr_i+1):
+                rests = ' '.join(list(map(lambda it: it['text'], items[i::])))
+                pairs[attr_i]["property"] += ' ' + rests
                 break
 
-            if (item['text'].lstrip('0123456789.- ').split(' ')[0].istitle() or "итого" in item['text'].lower())\
-                and ((item['y1'] >= attributes[price_i+1]['y1'] and item['y1'] <= attributes[price_i+1]['y2']) or
-                     (item['y2'] >= attributes[price_i+1]['y1'] and item['y2'] <= attributes[price_i+1]['y2']) or
-                     (item['y1'] - attributes[price_i]['y2'] >= attributes[price_i+1]['y1'] - item['y2'])):
-                price_i += 1
-                pairs.append({"property": item['text'].lstrip('0123456789.- '), "quantity": attributes[price_i]
-                             ['quantity'], "price": attributes[price_i]['price']})
+            if (item['text'].lstrip('0123456789.- ').split(' ')[0].istitle())\
+                and ((item['y1'] >= attributes[attr_i+1]['y1'] and item['y1'] <= attributes[attr_i+1]['y2']) or
+                     (item['y2'] >= attributes[attr_i+1]['y1'] and item['y2'] <= attributes[attr_i+1]['y2']) or
+                     (item['y1'] - attributes[attr_i]['y2'] >= attributes[attr_i+1]['y1'] - item['y2'])):
+                attr_i += 1
+                pairs.append({"property": item['text'].lstrip('0123456789.- '), "quantity": attributes[attr_i]
+                             ['quantity'], "price": attributes[attr_i]['price']})
             else:
-                pairs[price_i]["property"] += ' ' + item['text']
+                pairs[attr_i]["property"] += ' ' + item['text']
         if (total):
             pairs.append(total)
-        return pd.DataFrame(pairs)
+        df = pd.DataFrame(pairs)
+       # df.insert(0, '№',  range(1, len(df)+1))
+        return df

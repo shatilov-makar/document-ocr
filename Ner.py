@@ -51,7 +51,7 @@ class Ner:
         start_index = self.text.lower().find('передано')
         end_index = self.text.lower().find('приложение')
         if start_index == -1:
-            start_index = 0
+            return []#start_index = 0
         self.span_text = self.text[start_index:end_index]
         doc = Doc(self.span_text)
         doc.segment(self.segmenter)
@@ -68,7 +68,7 @@ class Ner:
             Функция возвращает название отдела СПИ
         '''
         spans = list(filter(lambda r: r.type == 'ORG', self.spans))
-        if (len(spans) > 0 and spans[0].start < len(self.span_text)/2):
+        if (len(spans) > 0 and spans[0].start < len(self.span_text)/2 and len(spans[0].normal) > 3):
             return spans[0].normal
         return '-'
 
@@ -77,7 +77,7 @@ class Ner:
             Функция возвращает имя СПИ
         '''
         spans = list(filter(lambda r: r.type == 'PER', self.spans))
-        if (len(spans) > 0 and spans[0].start < len(self.span_text)/2):
+        if (len(spans) > 0 and spans[0].start < len(self.span_text)/2 and len(spans[0].normal) > 3) :
             return spans[0].normal
         return '-'
 
@@ -88,9 +88,9 @@ class Ner:
         if (len(self.spans) < 3):
             return '-'
         spans = self.spans[-2:]
-        if (spans[0].start > len(self.span_text)/2 and spans[1].start > len(self.span_text)/2):
+        if (spans[0].start > len(self.span_text)/2 and spans[1].start > len(self.span_text)/2 and len(spans[0].normal) > 3):
             return spans[0].normal
-        elif (spans[0].start < len(self.span_text)/2 and spans[1].start > len(self.span_text)/2):
+        elif (spans[0].start < len(self.span_text)/2 and spans[1].start > len(self.span_text)/2 and len(spans[1].normal) > 3):
             return spans[1].normal
         return '-'
 
@@ -102,6 +102,6 @@ class Ner:
         if (len(self.spans) < 3):
             return '-'
         spans = self.spans[-2:]
-        if (spans[0].start > len(self.span_text)/2 and spans[1].start > len(self.span_text)/2):
+        if (spans[0].start > len(self.span_text)/2 and spans[1].start > len(self.span_text)/2 and len(spans[1].normal) > 3) :
             return spans[1].normal
         return '-'
