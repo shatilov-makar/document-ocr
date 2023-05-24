@@ -4,6 +4,8 @@ from JsonParser import JsonParser
 from Ner import Ner
 import pdf2image
 import io
+import aspose.pdf as ap
+
 ocr = Ocr()
 
 
@@ -14,6 +16,7 @@ def load_image():
     if uploaded_file is not None:
         image_data = ''
         if uploaded_file.type == "application/pdf":
+            document = ap.Document(input_pdf)
             images = pdf2image.convert_from_bytes(uploaded_file.read(),
                                                   fmt='jpeg', dpi=600)
             page = images[0]
