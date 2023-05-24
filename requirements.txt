@@ -1,4 +1,5 @@
 streamlit
 natasha
 scipy
+poppler-utils
 pdf2image
