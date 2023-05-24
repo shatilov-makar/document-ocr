@@ -14,7 +14,8 @@ connection_data = {
 
 class Ocr:
     '''
-        Класс для запроса на yandex.cloud с целью распознавания текста на изображении 
+        Класс для запроса на yandex.cloud с целью
+        распознавания текста на изображении
     '''
 
     def __init__(self):
@@ -36,29 +37,33 @@ class Ocr:
 
     def __request_analyze(self, image_data):
         '''
-            Функция отправляет на сервер запрос на распознавание изображения и возвращает ответ сервера.
+            Функция отправляет на сервер запрос на распознавание
+            изображения и возвращает ответ сервера.
         '''
-        response = post(self.vision_url, headers={'Authorization': 'Bearer ' + self.iam_token}, json={
-            'folderId': self.folder_id,
-            'analyzeSpecs': [
-                {
-                    'content': image_data,
-                    'features': [
-                        {
-                            'type': 'TEXT_DETECTION',
-                            'textDetectionConfig': {'languageCodes': ['en', 'ru']}
-                        }
-                    ],
-                }
-            ]})
+        features = [{
+            'type': 'TEXT_DETECTION',
+            'textDetectionConfig': {'languageCodes': ['en', 'ru']}
+        }]
+        response = post(self.vision_url,
+                        headers={'Authorization': 'Bearer ' + self.iam_token},
+                        json={
+                            'folderId': self.folder_id,
+                            'analyzeSpecs': [
+                                {
+                                    'content': image_data,
+                                    'features': features,
+                                }
+                            ]}
+                        )
         return response.text
 
     def get_recognition(self, image):
         '''
-            Функция кодирует изображение, отправляет его на распознавание текста и возвращает результат распознавания в формате json.
+            Функция кодирует изображение, отправляет его на распознавание
+            текста и возвращает результат распознавания в формате json.
 
             Параметры:
-                image : изображение, из которого нужно извлечь текст 
+                image : изображение, из которого нужно извлечь текст
         '''
         image_data = base64.b64encode(image).decode('utf-8')
         response_text = self.__request_analyze(image_data)

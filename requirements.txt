@@ -1,3 +1,4 @@
 streamlit
 natasha
 scipy
+pdf2image

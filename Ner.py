@@ -1,107 +1,71 @@
-import re
-from datetime import datetime
-from natasha import (
-    Segmenter,
-    MorphVocab,
-    NewsEmbedding,
-    NewsMorphTagger,
-    NewsNERTagger,
-    DatesExtractor,
-    Doc
-)
+from requests import post
+import json
+import base64
+import streamlit as st
 
 
-class Ner:
-    def __init__(self, text):
-        '''
-        Класс для поиска интересующих нас одиночных сущностей
-
-        Параметры:
-            text : текст в формате строки
-        '''
-        self.morph_vocab = MorphVocab()
-        emb = NewsEmbedding()
-        self.segmenter = Segmenter()
-        self.morph_tagger = NewsMorphTagger(emb)
-        self.ner_tagger = NewsNERTagger(emb)
-        self.text = text
-        self.dates_extractor = DatesExtractor(self.morph_vocab)
-        self.dates = list(self.dates_extractor(self.text))
-        self.spans = self.__get_spans()
-
-    def get_notif_number(self):
-        '''
-            Функция возвращает номер уведомлений
-        '''
-        return re.search(r"\d\d-\d+/\d\d",  self.text).group(0)
-
-    def get_notif_date(self):
-        '''
-            Функция возвращает дату уведомления
-        '''
-        if (len(self.dates) > 0):
-            date = self.dates[0].fact
-            return datetime(date.year, date.month, date.day).strftime("%d.%m.%y")
-        return '-'
-
-    def __get_spans(self):
-        '''
-            Функция возвращает массив сущностей типа ORG и PER
-        '''
-        start_index = self.text.lower().find('передано')
-        end_index = self.text.lower().find('приложение')
-        if start_index == -1:
-            return []#start_index = 0
-        self.span_text = self.text[start_index:end_index]
-        doc = Doc(self.span_text)
-        doc.segment(self.segmenter)
-        doc.tag_morph(self.morph_tagger)
-        for token in doc.tokens:
-            token.lemmatize(self.morph_vocab)
-        doc.tag_ner(self.ner_tagger)
-        for span in doc.spans:
-            span.normalize(self.morph_vocab)
-        return list(filter(lambda r: r.type == 'ORG' or r.type == 'PER', doc.spans))
-
-    def get_bailiff_org(self):
-        '''
-            Функция возвращает название отдела СПИ
-        '''
-        spans = list(filter(lambda r: r.type == 'ORG', self.spans))
-        if (len(spans) > 0 and spans[0].start < len(self.span_text)/2 and len(spans[0].normal) > 3):
-            return spans[0].normal
-        return '-'
-
-    def get_bailiff_name(self):
-        '''
-            Функция возвращает имя СПИ
-        '''
-        spans = list(filter(lambda r: r.type == 'PER', self.spans))
-        if (len(spans) > 0 and spans[0].start < len(self.span_text)/2 and len(spans[0].normal) > 3) :
-            return spans[0].normal
-        return '-'
-
-    def get_claimant_name(self):
-        '''
-            Функция возвращает имя/название компании должника
-        '''
-        if (len(self.spans) < 3):
-            return '-'
-        spans = self.spans[-2:]
-        if (spans[0].start > len(self.span_text)/2 and spans[1].start > len(self.span_text)/2 and len(spans[0].normal) > 3):
-            return spans[0].normal
-        elif (spans[0].start < len(self.span_text)/2 and spans[1].start > len(self.span_text)/2 and len(spans[1].normal) > 3):
-            return spans[1].normal
-        return '-'
+connection_data = {
+    'iam_url':  st.secrets['IAM_URL'],
+    'vision_url':  st.secrets['VISION_URL'],
+    'folder_id':  st.secrets['FOLDER_ID'],
+    'oauth_token': st.secrets['OAUTH_TOKEN']
+}
 
 
-    def get_debtor(self):
+class Ocr:
+    '''
+        Класс для запроса на yandex.cloud с целью
+        распознавания текста на изображении
+    '''
+
+    def __init__(self):
+        self.vision_url = connection_data['vision_url']
+        self.folder_id = connection_data['folder_id']
+        self.oauth_token = connection_data['oauth_token']
+        self.iam_token = self.__get_iam_token(connection_data['iam_url'])
+
+    def __get_iam_token(self, iam_url):
         '''
-            Функция возвращает имя/название компании взыскателя
+            Функция возвращает IAM-токен для аккаунта на Яндексе
         '''
-        if (len(self.spans) < 3):
-            return '-'
-        spans = self.spans[-2:]
-        if (spans[0].start > len(self.span_text)/2 and spans[1].start > len(self.span_text)/2 and len(spans[1].normal) > 3) :
-            return spans[1].normal
-        return '-'
+        response = post(iam_url, json={
+                        "yandexPassportOauthToken": self.oauth_token})
+        json_data = json.loads(response.text)
+        if json_data is not None and 'iamToken' in json_data:
+            return json_data['iamToken']
+        return None
+
+    def __request_analyze(self, image_data):
+        '''
+            Функция отправляет на сервер запрос на распознавание
+            изображения и возвращает ответ сервера.
+        '''
+        features = [{
+            'type': 'TEXT_DETECTION',
+            'textDetectionConfig': {'languageCodes': ['en', 'ru']}
+        }]
+        response = post(self.vision_url,
+                        headers={'Authorization': 'Bearer ' + self.iam_token},
+                        json={
+                            'folderId': self.folder_id,
+                            'analyzeSpecs': [
+                                {
+                                    'content': image_data,
+                                    'features': features,
+                                }
+                            ]}
+                        )
+        return response.text
+
+    def get_recognition(self, image):
+        '''
+            Функция кодирует изображение, отправляет его на распознавание
+            текста и возвращает результат распознавания в формате json.
+
+            Параметры:
+                image : изображение, из которого нужно извлечь текст
+        '''
+        image_data = base64.b64encode(image).decode('utf-8')
+        response_text = self.__request_analyze(image_data)
+        json_object = json.loads(response_text)
+        return json_object['results'][0]['results'][0]['textDetection']
