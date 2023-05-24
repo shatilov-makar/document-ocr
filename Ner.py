@@ -1,71 +1,121 @@
-from requests import post
-import json
-import base64
-import streamlit as st
+import re
+from datetime import datetime as dt
+from natasha import (
+    Segmenter,
+    MorphVocab,
+    NewsEmbedding,
+    NewsMorphTagger,
+    NewsNERTagger,
+    DatesExtractor,
+    Doc
+)
 
 
-connection_data = {
-    'iam_url':  st.secrets['IAM_URL'],
-    'vision_url':  st.secrets['VISION_URL'],
-    'folder_id':  st.secrets['FOLDER_ID'],
-    'oauth_token': st.secrets['OAUTH_TOKEN']
-}
-
-
-class Ocr:
-    '''
-        Класс для запроса на yandex.cloud с целью
-        распознавания текста на изображении
-    '''
-
-    def __init__(self):
-        self.vision_url = connection_data['vision_url']
-        self.folder_id = connection_data['folder_id']
-        self.oauth_token = connection_data['oauth_token']
-        self.iam_token = self.__get_iam_token(connection_data['iam_url'])
-
-    def __get_iam_token(self, iam_url):
+class Ner:
+    def __init__(self, text):
         '''
-            Функция возвращает IAM-токен для аккаунта на Яндексе
-        '''
-        response = post(iam_url, json={
-                        "yandexPassportOauthToken": self.oauth_token})
-        json_data = json.loads(response.text)
-        if json_data is not None and 'iamToken' in json_data:
-            return json_data['iamToken']
-        return None
+        Класс для поиска интересующих нас одиночных сущностей
 
-    def __request_analyze(self, image_data):
+        Параметры:
+            text : текст в формате строки
         '''
-            Функция отправляет на сервер запрос на распознавание
-            изображения и возвращает ответ сервера.
-        '''
-        features = [{
-            'type': 'TEXT_DETECTION',
-            'textDetectionConfig': {'languageCodes': ['en', 'ru']}
-        }]
-        response = post(self.vision_url,
-                        headers={'Authorization': 'Bearer ' + self.iam_token},
-                        json={
-                            'folderId': self.folder_id,
-                            'analyzeSpecs': [
-                                {
-                                    'content': image_data,
-                                    'features': features,
-                                }
-                            ]}
-                        )
-        return response.text
+        self.morph_vocab = MorphVocab()
+        emb = NewsEmbedding()
+        self.segmenter = Segmenter()
+        self.morph_tagger = NewsMorphTagger(emb)
+        self.ner_tagger = NewsNERTagger(emb)
+        self.text = text
+        self.dates_extractor = DatesExtractor(self.morph_vocab)
+        self.dates = list(self.dates_extractor(self.text))
+        self.persons, self.orgs, self.entities = self.__get_named_entities()
 
-    def get_recognition(self, image):
+    def get_notif_number(self):
         '''
-            Функция кодирует изображение, отправляет его на распознавание
-            текста и возвращает результат распознавания в формате json.
+            Функция возвращает номер уведомлений
+        '''
+        notif = re.findall(r"\d\d-\d+/\d\d", self.text)
+        if (len(notif) > 0):
+            return notif[0]
+        return '-'
 
-            Параметры:
-                image : изображение, из которого нужно извлечь текст
+    def get_notif_date(self):
         '''
-        image_data = base64.b64encode(image).decode('utf-8')
-        response_text = self.__request_analyze(image_data)
-        json_object = json.loads(response_text)
-        return json_object['results'][0]['results'][0]['textDetection']
+            Функция возвращает дату уведомления
+        '''
+        if (len(self.dates) > 0):
+            date = self.dates[0].fact
+            return dt(date.year, date.month, date.day).strftime("%d.%m.%y")
+        return '-'
+
+    def __get_named_entities(self):
+        '''
+            Функция возвращает массивы сущностей типа ORG и PER
+        '''
+        start_index = self.text.lower().find('передано')
+        end_index = self.text.lower().find('приложение')
+        if start_index == -1:
+            return [], [], []
+        self.span_text = self.text[start_index:end_index]
+        doc = Doc(self.span_text)
+        doc.segment(self.segmenter)
+        doc.tag_morph(self.morph_tagger)
+        for token in doc.tokens:
+            token.lemmatize(self.morph_vocab)
+        doc.tag_ner(self.ner_tagger)
+        for span in doc.spans:
+            span.normalize(self.morph_vocab)
+        orgs = list(filter(lambda r: r.type == 'ORG', doc.spans))
+        persons = list(filter(lambda r: r.type == 'PER', doc.spans))
+        entities = list(filter(lambda r: r.type == 'PER'
+                               or r.type == 'ORG', doc.spans))
+        return persons, orgs, entities
+
+    def get_officer_dep(self):
+        '''
+            Функция возвращает название отдела СПИ
+        '''
+        if (len(self.orgs) > 0 and
+                self.orgs[0].start < len(self.span_text)/2 and
+                len(self.orgs[0].normal) > 3):
+            return self.orgs[0].normal
+        return '-'
+
+    def get_officer_name(self):
+        '''
+            Функция возвращает имя СПИ
+        '''
+        if (len(self.persons) > 0 and
+                self.persons[0].start < len(self.span_text)/2 and
+                len(self.persons[0].normal) > 3):
+            return self.persons[0].normal
+        return '-'
+
+    def get_debtor_name(self):
+        '''
+            Функция возвращает имя/название компании должника
+        '''
+        if (len(self.entities) < 3):
+            return '-'
+        named_entities = self.entities[-2:]
+        if (named_entities[0].start > len(self.span_text)/2 and
+                named_entities[1].start > len(self.span_text)/2 and
+                len(named_entities[0].normal) > 3):
+            return named_entities[0].normal
+        elif (named_entities[0].start < len(self.span_text)/2 and
+                named_entities[1].start > len(self.span_text)/2 and
+                len(named_entities[1].normal) > 3):
+            return named_entities[1].normal
+        return '-'
+
+    def get_claimant(self):
+        '''
+            Функция возвращает имя/название компании взыскателя
+        '''
+        if (len(self.entities) < 3):
+            return '-'
+        named_entities = self.entities[-2:]
+        if (named_entities[0].start > len(self.span_text)/2 and
+                named_entities[1].start > len(self.span_text)/2 and
+                len(named_entities[1].normal) > 3):
+            return named_entities[1].normal
+        return '-'
