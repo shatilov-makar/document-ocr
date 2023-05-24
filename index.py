@@ -15,12 +15,11 @@ def load_image():
     if uploaded_file is not None:
         image_data = ''
         if uploaded_file.type == "application/pdf":
-            images = pdf2image.convert_from_bytes(uploaded_file.read(),
-                                                  fmt='jpeg', dpi=1000)
+            images = pdf2image.convert_from_bytes(uploaded_file.read())
             page = images[0]
             st.image(page, use_column_width=True)
             buf = io.BytesIO()
-            page.save(buf, format='JPEG')
+            page.save(buf, format='png')
             image_data = buf.getvalue()
         else:
             image_data = uploaded_file.getvalue()
