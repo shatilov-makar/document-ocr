@@ -16,7 +16,7 @@ def load_image():
         image_data = ''
         if uploaded_file.type == "application/pdf":
             images = pdf2image.convert_from_bytes(uploaded_file.read(),
-                                                  fmt='jpeg', dpi=600)
+                                                  fmt='jpeg', dpi=1000)
             page = images[0]
             st.image(page, use_column_width=True)
             buf = io.BytesIO()
