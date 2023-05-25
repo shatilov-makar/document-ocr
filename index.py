@@ -16,16 +16,20 @@ def load_image():
     if uploaded_file is not None:
         image_data = ''
         if uploaded_file.type == "application/pdf":
-            images = pdf2image.convert_from_bytes(uploaded_file.read())
-            st.image(images[0], use_column_width=True)
+            try:
+                images = pdf2image.convert_from_bytes(uploaded_file.read())
+                st.image(images[0], use_column_width=True)
 
-            doc = aw.Document(uploaded_file)
-            page = doc.extract_pages(0, 1)
-            buf = io.BytesIO()
-            saveOptions = aw.saving.ImageSaveOptions(aw.SaveFormat.JPEG)
+                doc = aw.Document(uploaded_file)
+                page = doc.extract_pages(0, 1)
+                buf = io.BytesIO()
+                saveOptions = aw.saving.ImageSaveOptions(aw.SaveFormat.JPEG)
 
-            page.save(buf,save_options=saveOptions)
-            image_data = buf.getvalue()
+                page.save(buf,save_options=saveOptions)
+                image_data = buf.getvalue()
+            except:
+                st.warning('**Не удалось отбразить документ**')
+                st.stop()
         else:
             image_data = uploaded_file.getvalue()
             st.image(image_data)
@@ -49,13 +53,17 @@ if result:
         if (len(df) == 0):
             st.warning('**Не удалось распознать документ**')
             st.stop()
-        ner = Ner(jsonParser.doc_text)
-        st.success('**Результаты распознавания:**')
-        notif_number = ner.get_notif_number()
-        notif_data = ner.get_notif_date()
-        st.write('Увед. № ' + notif_number + ' от ' + notif_data)
-        st.dataframe(df, use_container_width=False)
-        st.write(f'**Отдел** : { ner.get_officer_dep()}')
-        st.write(f'**Имя СПИ** : { ner.get_officer_name()}')
-        st.write(f'**Должник** : { ner.get_debtor_name()}')
-        st.write(f'**Взыскатель** : { ner.get_claimant()}')
+        try:
+            ner = Ner(jsonParser.doc_text)
+            st.success('**Результаты распознавания:**')
+            notif_number = ner.get_notif_number()
+            notif_data = ner.get_notif_date()
+            st.write('Увед. № ' + notif_number + ' от ' + notif_data)
+            st.dataframe(df, use_container_width=False)
+            st.write(f'**Отдел** : { ner.get_officer_dep()}')
+            st.write(f'**Имя СПИ** : { ner.get_officer_name()}')
+            st.write(f'**Должник** : { ner.get_debtor_name()}')
+            st.write(f'**Взыскатель** : { ner.get_claimant()}')
+        except:
+            st.warning('**Не удалось распознать документ**')
+            st.stop()
