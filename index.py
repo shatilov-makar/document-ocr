@@ -40,7 +40,7 @@ st.title('Оцифровка уведомления о готовности к  
          реализации арестовнного имущетсва')
 img = load_image()
 
-@st.cache_data(show_spinner=False)  
+@st.cache_data(show_spinner=False,ttl=600)  
 def get_data(img):
     ocr = Ocr()
     ocr_result = ocr.get_recognition(img)
