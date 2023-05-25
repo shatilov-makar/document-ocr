@@ -6,9 +6,8 @@ import pdf2image
 import aspose.words as aw
 import io
 
-ocr = Ocr()
 
-
+but = False
 def load_image():
     label_text = 'Выберите фотографию документа для распознавания'
     allowed_files = ['jpeg', 'jpg','png','pdf']
@@ -37,22 +36,24 @@ def load_image():
     else:
         return None
 
-
 st.title('Оцифровка уведомления о готовности к  \
          реализации арестовнного имущетсва')
 img = load_image()
-result = st.button('Распознать документ')
-if result:
+
+@st.cache_data(show_spinner=False)  
+def get_data(img):
+    ocr = Ocr()
+    ocr_result = ocr.get_recognition(img)
+    jsonParser = JsonParser(ocr_result)
+    df = jsonParser.get_property()
+    return jsonParser,df
+
+if img:
     with st.spinner('Идет обработка...'):
-
-        ocr_result = ocr.get_recognition(img)
-        jsonParser = JsonParser(ocr_result)
-
-        df = jsonParser.get_property()
-
+        jsonParser, df = get_data(img)
         if (len(df) == 0):
             st.warning('**Не удалось распознать документ**')
-            st.stop()
+            st.stop()   
         try:
             ner = Ner(jsonParser.doc_text)
             st.success('**Результаты распознавания:**')
@@ -60,10 +61,11 @@ if result:
             notif_data = ner.get_notif_date()
             st.write('Увед. № ' + notif_number + ' от ' + notif_data)
             st.dataframe(df, use_container_width=False)
-            st.write(f'**Отдел** : { ner.get_officer_dep()}')
-            st.write(f'**Имя СПИ** : { ner.get_officer_name()}')
-            st.write(f'**Должник** : { ner.get_debtor_name()}')
-            st.write(f'**Взыскатель** : { ner.get_claimant()}')
+            officer_dep = st.text_input('Отдел',ner.get_officer_dep())
+            officer_name= st.text_input('Имя СПИ',ner.get_officer_name())
+            debtor= st.text_input('Должник',ner.get_debtor_name())
+            claimant = st.text_input('Взыскатель',ner.get_claimant())
+            print(officer_dep, officer_name,debtor,claimant)
         except:
             st.warning('**Не удалось распознать документ**')
             st.stop()
