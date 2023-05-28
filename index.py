@@ -2,6 +2,7 @@ import streamlit as st
 from Ocr import Ocr
 from JsonParser import JsonParser
 from Ner import Ner
+from ExcelExport import ExcelExport
 import pdf2image
 import aspose.words as aw
 import io
@@ -41,16 +42,27 @@ st.title('Оцифровка уведомления о готовности к  
 img = load_image()
 
 @st.cache_data(show_spinner=False,ttl=600)  
-def get_data(img):
+def get_recognized_data(img):
     ocr = Ocr()
     ocr_result = ocr.get_recognition(img)
     jsonParser = JsonParser(ocr_result)
     df = jsonParser.get_property()
     return jsonParser,df
 
+@st.cache_data(show_spinner=False,ttl=600) 
+def get_excel_data(df, notif_number, notif_date, debtor, claimant, officer):
+    df =  df[( df['property'].str.lower().str.find('итого') < 0)]    
+    df.insert(0, "notif_number", notif_number)
+    df.insert(1, "notif_date", notif_date)
+    df.loc[:,'debtor' ] = debtor
+    df.loc[:,'claimant' ] = claimant
+    df.loc[:,'officer' ] = officer
+    excel = ExcelExport(df)
+    return excel.export_to_excel()
+
 if img:
     with st.spinner('Идет обработка...'):
-        jsonParser, df = get_data(img)
+        jsonParser, df = get_recognized_data(img)
         if (len(df) == 0):
             st.warning('**Не удалось распознать документ**')
             st.stop()   
@@ -58,14 +70,22 @@ if img:
             ner = Ner(jsonParser.doc_text)
             st.success('**Результаты распознавания:**')
             notif_number = ner.get_notif_number()
-            notif_data = ner.get_notif_date()
-            st.write('Увед. № ' + notif_number + ' от ' + notif_data)
+            notif_date = ner.get_notif_date()
+            st.write('Увед. № ' + notif_number + ' от ' + notif_date)
             st.dataframe(df, use_container_width=False)
             officer_dep = st.text_input('Отдел',ner.get_officer_dep())
             officer_name= st.text_input('Имя СПИ',ner.get_officer_name())
             debtor= st.text_input('Должник',ner.get_debtor_name())
             claimant = st.text_input('Взыскатель',ner.get_claimant())
-            print(officer_dep, officer_name,debtor,claimant)
+
+            excel_data = get_excel_data(df,notif_number, notif_date,debtor,claimant,officer_name)
+
+            st.download_button(
+                label="Сгенерировать отчет",
+                data=excel_data.getvalue(),
+                file_name=f"{notif_number}.xlsx",
+                mime="application/vnd.ms-excel"
+            )
         except:
             st.warning('**Не удалось распознать документ**')
             st.stop()

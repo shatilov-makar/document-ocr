@@ -44,7 +44,7 @@ class Ner:
         '''
         if (len(self.dates) > 0):
             date = self.dates[0].fact
-            return dt(date.year, date.month, date.day).strftime("%d.%m.%y")
+            return dt(date.year, date.month, date.day).strftime("%d.%m.%Y")
         return '-'
 
     def __get_named_entities(self):
