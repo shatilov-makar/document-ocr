@@ -22,8 +22,8 @@ class ExcelExport:
 
     def __create_client_secret(self):
         service_account_info = {
-            'installed':
-                st.secrets['installed']
+            'web':
+                st.secrets['web']
         }
         with open("client_secret.json", "w") as js:
             json.dump(service_account_info, js, default=dict)
