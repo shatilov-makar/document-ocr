@@ -85,11 +85,8 @@ def to_sheet(df, notif_number, notif_date, debtor, claimant, officer):
 
 if img:
     with st.spinner('Идет обработка...'):
-        jsonParser, df = get_recognized_data(img)
-        if (len(df) == 0):
-            st.warning('**Не удалось распознать документ**')
-            st.stop()   
         try:
+            jsonParser, df = get_recognized_data(img)
             ner = Ner(jsonParser.doc_text)
             st.success('**Результаты распознавания:**')
             notif_number = ner.get_notif_number()
