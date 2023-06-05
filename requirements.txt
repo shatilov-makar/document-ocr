@@ -4,3 +4,4 @@ scipy
 pdf2image
 aspose-words
 pygsheets
+gsheetsdb

@@ -6,9 +6,10 @@ from ExcelExport import ExcelExport
 import pdf2image
 import aspose.words as aw
 import io
-import pygsheets
-import json
 import pandas as pd
+
+
+
 if 'file_index' not in st.session_state:
     st.session_state['file_index'] = 0
 

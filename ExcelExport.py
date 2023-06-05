@@ -1,7 +1,7 @@
 import pygsheets
-from os.path import exists
 import streamlit as st
 import json
+from google.oauth2 import service_account
 
 
 class ExcelExport:
@@ -14,19 +14,13 @@ class ExcelExport:
 
     def __init__(self, df):
         self.__df = df
-        if (~exists('client_secret.json')):
-            self.__create_client_secret()
-        gc = pygsheets.authorize("client_secret.json")
+        SCOPES = ('https://www.googleapis.com/auth/spreadsheets',
+                  'https://www.googleapis.com/auth/drive')
+        credentials = service_account.Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"], scopes=SCOPES)
+        gc = pygsheets.authorize(custom_credentials=credentials)
         sheet = gc.open('my sheet')
         self.workspace = sheet.sheet1
-
-    def __create_client_secret(self):
-        service_account_info = {
-            'installed':
-                st.secrets['installed']
-        }
-        with open("client_secret.json", "w") as js:
-            json.dump(service_account_info, js, default=dict)
 
     def export_to_google_sheet(self):
         counts = int(self.workspace[1][1]) + 3
