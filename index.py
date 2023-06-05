@@ -21,10 +21,15 @@ def load_image():
     allowed_files = ['jpeg', 'jpg','png','pdf']
     uploaded_files = st.file_uploader(
         label=label_text, type=allowed_files, accept_multiple_files=True)
+    st.session_state['files_count'] = len(uploaded_files)
+    if not uploaded_files:
+        st.session_state['file_index'] = 0
     if uploaded_files:
-        st.session_state['files_count'] = len(uploaded_files)
-        current_file = [uploaded_file for i, uploaded_file in enumerate(uploaded_files)
-                        if i == st.session_state['file_index']][0]
+        if st.session_state['file_index'] < st.session_state['files_count'] - 1:
+            current_file = [uploaded_file for i, uploaded_file in enumerate(uploaded_files)
+                            if i == st.session_state['file_index']][0]
+        else:
+            current_file = uploaded_files[::-1][0]
         image_data = ''
         if current_file.type == "application/pdf":
             try:
@@ -60,7 +65,6 @@ def get_recognized_data(img):
     df = jsonParser.get_property()
     return jsonParser,df
 
-@st.cache_data(show_spinner=False,ttl=600) 
 def to_sheet(df, notif_number, notif_date, debtor, claimant, officer):
     try:
         df =  df[( df['property'].str.lower().str.find('итого') < 0)]    
