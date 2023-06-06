@@ -19,7 +19,7 @@ class ExcelExport:
         credentials = service_account.Credentials.from_service_account_info(
             st.secrets["gcp_service_account"], scopes=SCOPES)
         gc = pygsheets.authorize(custom_credentials=credentials)
-        sheet = gc.open('my sheet')
+        sheet = gc.open('Реестр имущества')
         self.workspace = sheet.sheet1
 
     def export_to_google_sheet(self):
